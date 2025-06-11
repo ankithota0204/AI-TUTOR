@@ -3,27 +3,47 @@ import pandas as pd
 import pickle
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Load data and model
-df = pd.read_csv("data/qa_dataset.csv")
+# Load vectorizer and data
 with open("tfidf_vectorizer.pkl", "rb") as f:
-    vectorizer = pickle.load(f)
+    vectorizer, tfidf_matrix, data = pickle.load(f)
 
-X = vectorizer.transform(df["question"])
+st.title("📚 AI Tutor with Chat History")
 
-# Streamlit UI
-st.set_page_config(page_title="AI Tutor", page_icon="🧠")
-st.title("🤖 AI Tutor – Learn with HOTA")
+# Session state to track Q&A
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-user_input = st.text_input("📘 Ask me a question:")
+# Input
+query = st.text_input("Ask a question 👇")
 
-if user_input:
-    user_vec = vectorizer.transform([user_input])
-    sim_scores = cosine_similarity(user_vec, X).flatten()
-    idx = sim_scores.argmax()
-    confidence = sim_scores[idx]
+if st.button("Get Answer"):
+    if query:
+        query_vector = vectorizer.transform([query])
+        similarity = cosine_similarity(query_vector, tfidf_matrix)
+        idx = similarity.argmax()
+        answer = data['answer'][idx]
 
-    if confidence > 0.3:
-        st.success(f"📗 Answer: {df.iloc[idx]['answer']}")
-        st.caption(f"Confidence: {confidence:.2f}")
-    else:
-        st.warning("❓ I’m not sure yet... Try rephrasing your question.")
+        # Save to chat history
+        st.session_state.chat_history.append((query, answer))
+
+# Show history
+if st.session_state.chat_history:
+    st.markdown("### 📝 Chat History")
+    for q, a in reversed(st.session_state.chat_history[-5:]):
+        st.markdown(f"**Q:** {q}")
+        st.markdown(f"**A:** {a}")
+        st.markdown("---")
+                # Save to chat history
+        st.session_state.chat_history.append((query, answer))
+
+        st.success(f"Answer: {answer}")
+
+        feedback = st.radio("Was this answer helpful?", ["👍 Yes", "👎 No"], key=f"feedback_{len(st.session_state.chat_history)}")
+        # Store or log this feedback for future analysis
+        st.session_state.chat_history[-1] += (feedback,)
+uploaded_file = st.file_uploader("Upload additional Q&A CSV", type=["csv"])
+if uploaded_file:
+    new_data = pd.read_csv(uploaded_file)
+    data = pd.concat([data, new_data], ignore_index=True)
+    tfidf_matrix = vectorizer.fit_transform(data['question'])  # Update the matrix
+    st.success("New topics added! Ask away.")
